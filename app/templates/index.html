@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0e1a">
+<meta property="og:image" content="/static/img/icon-512.png">
+<title>IL2CPP Dumper Studio</title>
+<link rel="icon" type="image/png" href="/static/img/icon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div class="bg">
+  <div class="bg-glow bg-glow-a"></div>
+  <div class="bg-glow bg-glow-b"></div>
+  <div class="bg-grid"></div>
+</div>
+
+<header class="topbar">
+  <div class="brand">
+    <img class="brand-logo" src="/static/img/icon-64.png" alt="IL2CPP Dumper Studio logo">
+    <div>
+      <span class="brand-name">IL2CPP Dumper <em>Studio</em></span>
+      <span class="brand-sub">Reverse-engineering workbench for Unity Android builds</span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="pill" id="versionPill">v1.0.0</span>
+    <span class="pill pill-dev">by&nbsp;<strong>Mohamed&nbsp;Annati</strong></span>
+  </div>
+</header>
+
+<main class="shell">
+
+  <!-- ============ hero ============ -->
+  <section class="hero">
+    <h1>Turn a Unity APK into readable&nbsp;<span class="grad">C#</span></h1>
+    <p class="lead">
+      Upload <code>libil2cpp.so</code> + <code>global-metadata.dat</code> &mdash; or just the
+      <code>.apk</code> &mdash; and get <code>dump.cs</code>, DummyDll assemblies,
+      <code>il2cpp.h</code>, <code>script.json</code> and string literals in seconds.
+    </p>
+    <div class="hero-badges">
+      <span class="badge">Android &middot; arm64 / arm / x86</span>
+      <span class="badge">Metadata v16&ndash;31</span>
+      <span class="badge">Runs in Google&nbsp;Colab</span>
+      <span class="badge">100% local &mdash; nothing is uploaded elsewhere</span>
+    </div>
+  </section>
+
+  <div class="layout">
+
+    <!-- ============ left: input ============ -->
+    <section class="card" id="inputCard">
+      <div class="card-head">
+        <span class="step">1</span>
+        <h2>Choose your files</h2>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button class="tab is-active" data-mode="apk" id="tabApk">Full APK / XAPK</button>
+        <button class="tab" data-mode="pair" id="tabPair">.so + .dat pair</button>
+      </div>
+
+      <div class="drop-zone" id="zoneApk" data-accept=".apk,.xapk,.aab,.apks,.zip">
+        <div class="dz-icon">&#128230;</div>
+        <div class="dz-title">Drop the APK / XAPK / AAB here</div>
+        <div class="dz-hint">or click to browse &mdash; both files are extracted for you</div>
+        <input type="file" id="fileApk" accept=".apk,.xapk,.aab,.apks,.zip" hidden>
+      </div>
+
+      <div class="drop-row" id="zonePair" hidden>
+        <div class="drop-zone drop-half" id="zoneSo" data-accept=".so,.dll,.bin,.dat,*/*">
+          <div class="dz-icon">&#129518;</div>
+          <div class="dz-title">libil2cpp.so</div>
+          <div class="dz-hint">IL2CPP native binary</div>
+          <input type="file" id="fileSo" hidden>
+        </div>
+        <div class="drop-zone drop-half" id="zoneDat" data-accept=".dat,*/*">
+          <div class="dz-icon">&#128219;</div>
+          <div class="dz-title">global-metadata.dat</div>
+          <div class="dz-hint">Unity metadata</div>
+          <input type="file" id="fileDat" hidden>
+        </div>
+      </div>
+
+      <ul class="file-chips" id="fileChips"></ul>
+
+      <div class="abi-row" id="abiRow" hidden>
+        <label for="abiSelect">ABI</label>
+        <select id="abiSelect"></select>
+      </div>
+
+      <div class="options">
+        <div class="card-head small"><span class="step">2</span><h2>Output options</h2></div>
+        <label class="opt"><input type="checkbox" id="optDummy" checked><span>Rebuild DummyDll assemblies</span></label>
+        <label class="opt"><input type="checkbox" id="optScript" checked><span>script.json (IDA / Ghidra)</span></label>
+        <label class="opt"><input type="checkbox" id="optHeader" checked><span>il2cpp.h runtime header</span></label>
+        <label class="opt"><input type="checkbox" id="optStrings" checked><span>stringliteral.json</span></label>
+        <label class="opt"><input type="checkbox" id="optOffsets" checked><span>Field &amp; method offsets</span></label>
+      </div>
+
+      <button class="cta" id="dumpBtn" disabled>
+        <span class="cta-spin" aria-hidden="true"></span>
+        <span id="dumpBtnLabel">Dump IL2CPP</span>
+      </button>
+    </section>
+
+    <!-- ============ right: progress + result ============ -->
+    <section class="card">
+      <div class="card-head">
+        <span class="step">3</span>
+        <h2>Analyse &amp; dump</h2>
+        <span class="status" id="statusBadge">idle</span>
+      </div>
+
+      <div class="progress">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+
+      <div class="log" id="logBox"><span class="log-dim">Waiting for input&hellip;</span></div>
+
+      <div id="errorBox" class="error" hidden></div>
+
+      <div id="resultWrap" hidden>
+        <div class="stats" id="statsGrid"></div>
+
+        <div class="files" id="fileList"></div>
+
+        <div class="actions">
+          <button class="btn-secondary" id="zipBtn">&#11015; Download everything (.zip)</button>
+        </div>
+
+        <div class="preview-head">
+          <h3>dump.cs preview</h3>
+          <input class="search" id="previewSearch" placeholder="Search types / methods&hellip;">
+        </div>
+        <pre class="code" id="previewCode"></pre>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="footer">
+  <span>IL2CPP Dumper Studio &mdash; developed by <strong>Mohamed Annati</strong></span>
+  <span class="dot">&bull;</span>
+  <span>For educational reverse-engineering of software you own or are licensed to analyse.</span>
+</footer>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

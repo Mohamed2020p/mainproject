@@ -1,0 +1,9 @@
+# IL2CPP Dumper Studio - runtime dependencies.
+# The core dumper itself is pure-Python (no dependencies).
+
+# Web front end (local, sandbox, or Google Colab).
+flask>=2.2
+
+# Optional - only needed to regenerate the raster brand assets
+# (the PNGs and Android launcher icons are already committed).
+Pillow>=9.0

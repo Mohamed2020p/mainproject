@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">IL2CPP Dumper Studio</string>
+    <string name="subtitle">Unity Android reverse-engineering workbench</string>
+    <string name="developer">Developed by Mohamed Annati</string>
+
+    <string name="pick_apk">Pick APK / XAPK</string>
+    <string name="pick_so">libil2cpp.so</string>
+    <string name="pick_dat">global-metadata.dat</string>
+    <string name="or_divider">— or —</string>
+    <string name="dump">Dump IL2CPP</string>
+    <string name="dumping">Dumping…</string>
+    <string name="idle">Waiting for files</string>
+    <string name="no_files">Choose an APK, or a .so + .dat pair first.</string>
+    <string name="done">Done — saved to %1$s</string>
+    <string name="error">Error: %1$s</string>
+    <string name="share">Share</string>
+    <string name="open_folder">Open dump folder</string>
+    <string name="note_on_device">On-device mode rebuilds names, types, methods, fields and properties
+        (metadata-based). For full binary analysis (RVA / field offsets / DummyDll), use the Web /
+        Colab / CLI build.</string>
+</resources>
