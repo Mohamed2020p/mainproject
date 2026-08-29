@@ -1,0 +1,113 @@
+=====================================================================
+ IL2CPP DUMPER STUDIO - INSTALL / DEPLOY / BUILD CHEAT-SHEET
+ Developed by Mohamed Annati
+=====================================================================
+
+This file tells you, copy-paste ready, how to:
+  [A] Run it in GOOGLE COLAB (recommended, zero setup)
+  [B] Run the web studio on your own machine / this sandbox
+  [C] Run the command-line dumper
+  [D] Install everything needed to compile the ANDROID APK
+  [E] Build the Android APK
+  [F] Regenerate the brand assets (logo / icons)
+
+Everything is pure-Python at the core - the dumper itself has NO
+dependencies.  Flask is only for the web UI; Pillow only for regenerating
+PNG brand assets; the Android app needs JDK 17 + Android SDK + Gradle.
+
+---------------------------------------------------------------------
+[A] GOOGLE COLAB  (easiest - no install, runs in the browser)
+---------------------------------------------------------------------
+1. Open https://colab.research.google.com
+2. File -> Open notebook -> GitHub -> paste:
+       https://github.com/Mohamed2020p/mainproject
+   and open:  colab/IL2CPP_Dumper_Studio.ipynb
+   (or upload the .ipynb from this repo)
+3. Run the cells in order.  Cell 2 prints a live web-studio link.
+4. In the web studio drop your APK and press "Dump IL2CPP".
+
+If you prefer a fully manual Colab (no notebook), paste this in ONE cell:
+
+    !git clone --depth 1 -b arena/01a04eae-mainproject https://github.com/Mohamed2020p/mainproject dumper
+    %cd dumper
+    !pip install -q flask
+    import sys, threading; sys.path.insert(0, ".")
+    from google.colab import output
+    from app import server
+    threading.Thread(target=lambda: server.APP.run(host="0.0.0.0", port=8050,
+        debug=False, threaded=True, use_reloader=False), daemon=True).start()
+    print("OPEN:", output.eval_js("google.colab.kernel.proxyPort(8050, {'cache': false})"))
+
+---------------------------------------------------------------------
+[B] WEB STUDIO - your machine / sandbox  (live preview)
+---------------------------------------------------------------------
+    git clone https://github.com/Mohamed2020p/mainproject && cd mainproject
+    python3 -m pip install -r requirements.txt        # flask (+ optional Pillow)
+    python3 run.py                                     # http://localhost:8050
+
+  In this Arena sandbox the server binds 0.0.0.0:8050 automatically and shows
+  up as a LIVE PREVIEW.  Open the preview, drop an APK, press Dump.
+
+---------------------------------------------------------------------
+[C] COMMAND-LINE DUMPER  (pure Python, no deps)
+---------------------------------------------------------------------
+    # from an APK (it extracts libil2cpp.so + global-metadata.dat itself):
+    python3 run.py cli path/to/game.apk -o dump
+
+    # from an explicit pair:
+    python3 run.py cli path/to/libil2cpp.so path/to/global-metadata.dat -o dump
+
+    # or the module directly:
+    python3 -m dumper.cli game.apk -o dump --abi arm64-v8a
+
+  Outputs land in ./dump  ->  dump.cs, DummyDll/, il2cpp.h, script.json,
+  stringliteral.json, dump-manifest.json
+
+---------------------------------------------------------------------
+[D] PREREQUISITES TO COMPILE THE ANDROID APK
+---------------------------------------------------------------------
+  You need, once:
+
+  1) JDK 17
+       Ubuntu/Debian:  sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+       macOS (brew):   brew install openjdk@17
+  2) Android SDK (platform 34, build-tools 34+)
+       Easiest: install Android Studio (https://developer.android.com/studio)
+       OR command line:
+         curl -O https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+         unzip commandlinetools-linux-*.zip -d $HOME/android-sdk
+         yes | $HOME/android-sdk/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk \
+             "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+       then:  export ANDROID_HOME=$HOME/android-sdk
+  3) Gradle 8.7 (the wrapper is generated on first build, or Android Studio syncs it)
+
+---------------------------------------------------------------------
+[E] BUILD THE ANDROID APK
+---------------------------------------------------------------------
+  Option 1 - script (recommended):
+       ./scripts/build_apk.sh
+     -> produces build/app-release-unsigned.apk
+
+  Option 2 - by hand:
+       cd android
+       gradle wrapper --gradle-version 8.7        # once
+       ./gradlew assembleRelease
+     -> android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+  Option 3 - Android Studio: open ./android, let it sync, then Build -> Build APK(s).
+
+  Note: the signed Play build requires your own keystore; the unsigned APK above
+  installs fine via `adb install` after enabling "install unknown apps".
+
+---------------------------------------------------------------------
+[F] REGENERATE BRAND ASSETS (logo / launcher icons / preview)
+---------------------------------------------------------------------
+    python3 -m pip install Pillow
+    python3 assets/brand/generate_assets.py
+  (PNGs and Android mipmaps are already committed; this just re-renders them
+  from assets/brand/logo.svg geometry.)
+
+=====================================================================
+ The core dumper has NO third-party dependencies - it always works.
+ For educational reverse-engineering of software you own or are licensed to analyse.
+=====================================================================

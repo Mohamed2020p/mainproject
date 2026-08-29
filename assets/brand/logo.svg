@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="IL2CPP Dumper Studio">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="0.55" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" ry="112" fill="url(#brand)"/>
+  <polygon points="424,256 340,401.5 172,401.5 88,256 172,110.5 340,110.5"
+           fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linejoin="round" opacity="0.95"/>
+  <g fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="206,204 162,256 206,308"/>
+    <polyline points="306,204 350,256 306,308"/>
+    <line x1="280" y1="192" x2="232" y2="320"/>
+  </g>
+</svg>

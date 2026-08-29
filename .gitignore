@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Web runtime
+.uploads/
+*.db
+
+# Dump outputs (regenerate locally; never commit game data)
+/dump/*
+!/dump/.gitkeep
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/build/
+android/app/build/
+android/gradlew
+android/gradlew.bat
+android/gradle/wrapper/
+*.apk
+
+# Build artifacts
+build/
+out/
+
+# OS / editor
+.DS_Store
+.idea/
+*.iml
