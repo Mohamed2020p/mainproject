@@ -65,13 +65,16 @@ def _mask(size: int, radius: int) -> Image.Image:
     return out
 
 
-def render(size: int, pad: float = 0.0, rounded: bool = True) -> Image.Image:
+def render(size: int, pad: float = 0.0, rounded: bool = True,
+           circle: bool = False) -> Image.Image:
     """Render the app icon at ``size`` px.  ``pad`` shrinks the mark (maskable),
-    ``rounded=False`` keeps the gradient full-bleed for adaptive launchers."""
+    ``rounded=False`` keeps the gradient full-bleed, ``circle=True`` makes a
+    round launcher badge."""
     big = max(1, int(size * SUPERSAMPLE))
     tile = _gradient(big).convert("RGBA")
-    if rounded:
-        tile.putalpha(_mask(big, int(big * CORNER)))
+    if rounded or circle:
+        radius = big // 2 if circle else int(big * CORNER)
+        tile.putalpha(_mask(big, radius))
     draw = ImageDraw.Draw(tile)
 
     s = big / 512.0
@@ -152,6 +155,56 @@ def _write(image: Image.Image, name: str) -> int:
     return os.path.getsize(path)
 
 
+REPO = os.path.dirname(HERE)
+ANDROID_RES = os.path.join(REPO, "android", "app", "src", "main", "res")
+ANDROID_DENSITIES = {"mipmap-mdpi": 48, "mipmap-hdpi": 72, "mipmap-xhdpi": 96,
+                     "mipmap-xxhdpi": 144, "mipmap-xxxhdpi": 192}
+
+ANDROID_LOGO_XML = """<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <path
+        android:pathData="M256,92 L398,174 L398,338 L256,420 L114,338 L114,174 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="30"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M214,208 L162,256 L214,304 M298,208 L350,256 L298,304 M278,194 L234,318"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="34"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>
+"""
+
+
+def android() -> int:
+    """Regenerate the Android launcher icons with the same mark as the web."""
+    total = 0
+    for folder, size in ANDROID_DENSITIES.items():
+        base = os.path.join(ANDROID_RES, folder)
+        os.makedirs(base, exist_ok=True)
+        for name, circle in (("ic_launcher.png", False),
+                             ("ic_launcher_round.png", True)):
+            path = os.path.join(base, name)
+            _shrink(render(size, circle=circle)).save(path, optimize=True)
+            total += os.path.getsize(path)
+    fg = os.path.join(ANDROID_RES, "drawable-nodpi", "ic_launcher_foreground.png")
+    os.makedirs(os.path.dirname(fg), exist_ok=True)
+    _shrink(render(192)).save(fg, optimize=True)
+    total += os.path.getsize(fg)
+    logo = os.path.join(ANDROID_RES, "drawable", "ic_logo.xml")
+    with open(logo, "w", encoding="utf-8") as handle:
+        handle.write(ANDROID_LOGO_XML)
+    total += os.path.getsize(logo)
+    print("  regenerated Android launcher icons (%d B)" % total)
+    return total
+
+
 def main() -> None:
     print("Rendering web studio icons...")
     total = 0
@@ -181,6 +234,7 @@ def main() -> None:
     total += os.path.getsize(manifest)
     print("  wrote app/static/site.webmanifest (%d B)" % os.path.getsize(manifest))
     print("Done - app/static/img + manifest total: %d B" % total)
+    android()
 
 
 if __name__ == "__main__":
