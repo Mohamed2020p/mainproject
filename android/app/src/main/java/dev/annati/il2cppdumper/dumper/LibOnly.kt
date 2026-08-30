@@ -4,27 +4,21 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.channels.FileChannel
 
 /**
  * Metadata-free (".so only") analysis for the on-device app.
  *
- * Reads the native binary through a read-only memory map so multi-gigabyte
- * files never load into RAM, extracts the ELF structure and the exported symbol
- * table, and writes `il2cpp.h`, `script.json` and `lib-report.json`.  Every step
- * is guarded so a strange binary degrades to a partial report instead of
- * crashing.
+ * Only the small tables (ELF header, section table, .dynstr, .dynsym) are read
+ * into memory via [RandomAccessFile], so multi-gigabyte binaries never load into
+ * RAM and nothing can index past 2 GB.  Writes `il2cpp.h`, `script.json`
+ * (exports) and `lib-report.json`.  Every step is guarded so a strange binary
+ * degrades to a partial report instead of crashing.
  *
  * Developed by @c0derz.
  */
 object LibOnly {
 
     private const val SHT_DYNSYM = 11
-    private const val SHT_STRTAB = 3
-
-    private data class Section(val name: String, val type: Long, val addr: Long,
-                               val offset: Long, val size: Long, val link: Int,
-                               val entsize: Long)
 
     private data class Symbol(val name: String, val value: Long)
 
@@ -39,38 +33,27 @@ object LibOnly {
         var symbols: List<Symbol> = emptyList()
         try {
             RandomAccessFile(File(soPath), "r").use { raf ->
-                val channel = raf.channel
-                val size = channel.size()
+                val size = raf.length()
                 report["fileSize"] = size
-                val buf = channel.map(FileChannel.MapMode.READ_ONLY, 0, size)
-                buf.order(ByteOrder.LITTLE_ENDIAN)
-                parseElf(buf, report).also { symbols = it }
+                symbols = parseElf(raf, size, report)
             }
         } catch (e: Exception) {
             report["error"] = (e.message ?: e.toString())
         }
 
-        // il2cpp.h
-        try {
-            val h = File(outDir, "il2cpp.h")
-            h.writeText(HEADER)
-            written.add(h)
-        } catch (_: Exception) { }
+        try { File(outDir, "il2cpp.h").writeText(HEADER); written.add(File(outDir, "il2cpp.h")) }
+        catch (_: Exception) { }
 
-        // script.json (exports, same schema as the full dumper)
         try {
             val methods = symbols.filter { it.value != 0L && it.name.isNotEmpty() }
                 .sortedBy { it.value }
-                .joinToString(",") { s ->
-                    "{\"Address\":${s.value},\"Name\":${json(s.name)}}"
-                }
+                .joinToString(",") { s -> "{\"Address\":${s.value},\"Name\":${json(s.name)}}" }
             val s = File(outDir, "script.json")
             s.writeText("{\"ScriptMethod\":[$methods],\"ScriptString\":[]," +
                 "\"ScriptMetadata\":[],\"ScriptMetadataMethod\":[],\"Addresses\":[]}")
             written.add(s)
         } catch (_: Exception) { }
 
-        // lib-report.json
         try {
             report["exportedSymbols"] = symbols.size
             val r = File(outDir, "lib-report.json")
@@ -81,125 +64,119 @@ object LibOnly {
         return written
     }
 
-    /** Returns the exported symbols; fills [report] with structure info. */
-    private fun parseElf(buf: ByteBuffer, report: MutableMap<String, Any>): List<Symbol> {
-        if (buf.limit() < 0x34 || buf.get(0) != 0x7f.toByte() || buf.get(1) != 'E'.code.toByte()) {
-            report["format"] = "not-ELF"
-            return emptyList()
+    private fun readAt(raf: RandomAccessFile, at: Long, n: Int): ByteArray? {
+        if (at < 0 || at > raf.length()) return null
+        val b = ByteArray(n)
+        raf.seek(at)
+        val read = raf.read(b)
+        return if (read <= 0) null else b
+    }
+
+    private fun parseElf(raf: RandomAccessFile, size: Long,
+                         report: MutableMap<String, Any>): List<Symbol> {
+        val head = readAt(raf, 0, 0x40) ?: return emptyList()
+        val hb = ByteBuffer.wrap(head).order(ByteOrder.LITTLE_ENDIAN)
+        if (head[0] != 0x7f.toByte() || head[1] != 'E'.code.toByte()) {
+            report["format"] = "not-ELF"; return emptyList()
         }
-        val is64 = buf.get(4).toInt() == 2
-        val machine = u16(buf, 0x12)
+        val is64 = head[4].toInt() == 2
+        val machine = hb.getShort(0x12).toInt() and 0xFFFF
         report["format"] = if (is64) "ELF64" else "ELF32"
         report["bits"] = if (is64) 64 else 32
         report["abi"] = abi(machine)
 
-        val shoff = if (is64) buf.getLong(0x28) else u32(buf, 0x20)
-        val shentsize = if (is64) u16(buf, 0x3A) else u16(buf, 0x2E)
-        val shnum = if (is64) u16(buf, 0x3C) else u16(buf, 0x30)
-        val shstrndx = if (is64) u16(buf, 0x3E) else u16(buf, 0x32)
-        if (shoff == 0L || shnum == 0 || shentsize == 0) {
-            report["sections"] = 0
-            return emptyList()
+        val shoff = if (is64) hb.getLong(0x28) else hb.getInt(0x20).toLong() and 0xFFFFFFFFL
+        val shentsize = (if (is64) hb.getShort(0x3A) else hb.getShort(0x2E)).toInt() and 0xFFFF
+        val shnum = (if (is64) hb.getShort(0x3C) else hb.getShort(0x30)).toInt() and 0xFFFF
+        val shstrndx = (if (is64) hb.getShort(0x3E) else hb.getShort(0x32)).toInt() and 0xFFFF
+        if (shoff == 0L || shnum == 0 || shentsize == 0 || shstrndx >= shnum) {
+            report["sections"] = 0; return emptyList()
         }
 
-        fun shBase(i: Int): Long = shoff + i.toLong() * shentsize
-        fun shNameOff(i: Int): Int = u32(buf, shBase(i)).toInt()
-        fun shType(i: Int): Long = u32(buf, shBase(i) + 4)
-        fun shOffset(i: Int): Long = if (is64) buf.getLong(shBase(i) + 24) else u32(buf, shBase(i) + 16)
-        fun shSize(i: Int): Long = if (is64) buf.getLong(shBase(i) + 32) else u32(buf, shBase(i) + 20)
-        fun shLink(i: Int): Int = u32(buf, shBase(i) + (if (is64) 40 else 24)).toInt()
-        fun shEntsize(i: Int): Long = if (is64) buf.getLong(shBase(i) + 56) else u32(buf, shBase(i) + 36)
-        fun shAddr(i: Int): Long = if (is64) buf.getLong(shBase(i) + 16) else u32(buf, shBase(i) + 12)
+        val table = readAt(raf, shoff, shnum * shentsize) ?: return emptyList()
+        val tb = ByteBuffer.wrap(table).order(ByteOrder.LITTLE_ENDIAN)
+
+        fun s32(i: Int, off: Int): Int = tb.getInt(i * shentsize + off)
+        fun s64(i: Int, off: Int): Long =
+            if (is64) tb.getLong(i * shentsize + off)
+            else tb.getInt(i * shentsize + off).toLong() and 0xFFFFFFFFL
 
         // section-name string table
-        val names = ArrayList<String>()
-        val strOff = shOffset(shstrndx)
-        val strSize = shSize(shstrndx)
-        for (i in 0 until shnum) {
-            names.add(cString(buf, strOff + shNameOff(i), strOff + strSize))
-        }
+        val strOff = s64(shstrndx, if (is64) 24 else 16)
+        val strSize = s64(shstrndx, if (is64) 32 else 20)
+        val strTab = readAt(raf, strOff, strSize.toInt().coerceAtMost(4_000_000)) ?: ByteArray(0)
 
-        val sections = ArrayList<Section>()
+        data class Sec(val name: String, val type: Int, val addr: Long, val size: Long,
+                       val link: Int, val offset: Long, val entsize: Long)
+        val sections = ArrayList<Sec>()
         for (i in 0 until shnum) {
-            sections.add(Section(names[i], shType(i), shAddr(i), shOffset(i),
-                shSize(i), shLink(i), shEntsize(i)))
+            val name = cString(strTab, s32(i, 0))
+            sections.add(Sec(name, s32(i, 4), s64(i, if (is64) 16 else 12),
+                s64(i, if (is64) 32 else 20), s32(i, if (is64) 40 else 24),
+                s64(i, if (is64) 24 else 16), s64(i, if (is64) 56 else 36)))
         }
         report["sections"] = sections.map { mapOf("name" to it.name, "vaddr" to it.addr, "size" to it.size) }
 
-        // find .dynsym + its .dynstr
-        val dynsym = sections.firstOrNull { it.type.toLong() == SHT_DYNSYM.toLong() }
-            ?: return emptyList()
+        val dynsym = sections.firstOrNull { it.type == SHT_DYNSYM } ?: return emptyList()
         val dynstr = sections.getOrNull(dynsym.link) ?: return emptyList()
-        val entsize = if (dynsym.entsize > 0) dynsym.entsize else if (is64) 24L else 16L
-        val count = (dynsym.size / entsize).toInt().coerceAtMost(1_000_000)
+        val entsize = (if (dynsym.entsize > 0) dynsym.entsize else if (is64) 24L else 16L).toInt()
+        val count = (dynsym.size / entsize).toInt().coerceAtMost(200_000)
+        val symTab = readAt(raf, dynsym.offset, (count * entsize).coerceAtMost(8_000_000))
+            ?: return emptyList()
+        val sb_ = ByteBuffer.wrap(symTab).order(ByteOrder.LITTLE_ENDIAN)
+        val dynStr = readAt(raf, dynstr.offset, dynstr.size.toInt().coerceAtMost(8_000_000))
+            ?: ByteArray(0)
 
         val out = ArrayList<Symbol>()
-        for (i in 1 until count) {
-            val base = dynsym.offset + i.toLong() * entsize
-            if (base + entsize > buf.limit()) break
+        for (i in 1 until minOf(count, symTab.size / entsize)) {
+            val base = i * entsize
             val nameOff: Int
             val value: Long
             if (is64) {
-                nameOff = u32(buf, base).toInt()
-                value = buf.getLong(base + 8)
+                nameOff = sb_.getInt(base)
+                value = sb_.getLong(base + 8)
             } else {
-                nameOff = u32(buf, base).toInt()
-                value = u32(buf, base + 4)
+                nameOff = sb_.getInt(base)
+                value = sb_.getInt(base + 4).toLong() and 0xFFFFFFFFL
             }
-            val name = cString(buf, dynstr.offset + nameOff, dynstr.offset + dynstr.size)
+            val name = cString(dynStr, nameOff)
             if (name.isNotEmpty()) out.add(Symbol(name, value))
         }
         return out
     }
 
-    private fun cString(buf: ByteBuffer, from: Long, limit: Long): String {
-        if (from < 0 || from >= buf.limit()) return ""
+    private fun cString(arr: ByteArray, from: Int): String {
+        if (from < 0 || from >= arr.size) return ""
         val sb = StringBuilder()
         var i = from
-        val end = minOf(limit, buf.limit().toLong())
-        while (i < end) {
-            val b = buf.get(i.toInt())
-            if (b.toInt() == 0) break
-            sb.append(b.toInt().toChar())
-            i++
-            if (sb.length > 256) break
+        while (i < arr.size && arr[i].toInt() != 0 && sb.length < 256) {
+            sb.append(arr[i].toInt().toChar()); i++
         }
         return sb.toString()
     }
 
-    private fun u16(buf: ByteBuffer, at: Int): Int = buf.getShort(at).toInt() and 0xFFFF
-    private fun u32(buf: ByteBuffer, at: Int): Long = buf.getInt(at).toLong() and 0xFFFFFFFFL
-
     private fun abi(machine: Int): String = when (machine) {
-        40 -> "armeabi-v7a"
-        183 -> "arm64-v8a"
-        3 -> "x86"
-        62 -> "x86_64"
+        40 -> "armeabi-v7a"; 183 -> "arm64-v8a"; 3 -> "x86"; 62 -> "x86_64"
         else -> "machine-$machine"
     }
 
     private fun json(s: String): String {
         val sb = StringBuilder("\"")
         for (c in s) when {
-            c == '\\' -> sb.append("\\\\")
-            c == '"' -> sb.append("\\\"")
-            c == '\n' -> sb.append("\\n")
-            c == '\r' -> sb.append("\\r")
-            c == '\t' -> sb.append("\\t")
-            c.code < 0x20 -> sb.append("\\u%04x".format(c.code))
+            c == '\\' -> sb.append("\\\\"); c == '"' -> sb.append("\\\"")
+            c == '\n' -> sb.append("\\n"); c == '\r' -> sb.append("\\r")
+            c == '\t' -> sb.append("\\t"); c.code < 0x20 -> sb.append("\\u%04x".format(c.code))
             else -> sb.append(c)
         }
         return sb.append('"').toString()
     }
 
     private fun toJson(map: Map<String, Any>, indent: Int): String {
-        val pad = "  ".repeat(indent + 1)
-        val close = "  ".repeat(indent)
+        val pad = "  ".repeat(indent + 1); val close = "  ".repeat(indent)
         val sb = StringBuilder("{\n")
         val entries = map.entries.toList()
         for ((i, e) in entries.withIndex()) {
-            sb.append(pad).append(json(e.key)).append(": ")
-            sb.append(valueJson(e.value, indent + 1))
+            sb.append(pad).append(json(e.key)).append(": ").append(valueJson(e.value, indent + 1))
             if (i < entries.size - 1) sb.append(",")
             sb.append("\n")
         }
@@ -210,12 +187,8 @@ object LibOnly {
         is Number -> v.toString()
         is Boolean -> v.toString()
         is Map<*, *> -> toJson(v.entries.associate { it.key.toString() to (it.value as Any) }, indent)
-        is List<*> -> {
-            if (v.isEmpty()) "[]"
-            else v.joinToString(",", "[\n", "\n" + "  ".repeat(indent - 1) + "]") {
-                "  ".repeat(indent) + valueJson(it as Any, indent)
-            }
-        }
+        is List<*> -> if (v.isEmpty()) "[]" else v.joinToString(",", "[\n",
+            "\n" + "  ".repeat(indent - 1) + "]") { "  ".repeat(indent) + valueJson(it as Any, indent) }
         else -> json(v.toString())
     }
 
