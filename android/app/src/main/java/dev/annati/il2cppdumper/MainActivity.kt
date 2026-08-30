@@ -82,7 +82,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnShare.isEnabled = false
         binding.txtStatus.setText(R.string.dumping)
         binding.btnDump.setText(R.string.dumping)
-        setProgress(5)
+        updateProgress(5)
         appendLog("Starting dump…")
 
         lifecycleScope.launch {
@@ -100,15 +100,15 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     appendLog("Parsing global-metadata.dat…")
-                    setProgress(30)
+                    updateProgress(30)
                     val metadata = Metadata.fromFile(metadataPath!!)
                     val s = metadata.summary()
                     appendLog("Metadata v${metadata.version} | ${s["types"]} types, ${s["methods"]} methods")
 
-                    setProgress(70)
+                    updateProgress(70)
                     appendLog("Writing dump.cs …")
                     val files = DumpWriter.write(metadata, outDir)
-                    setProgress(100)
+                    updateProgress(100)
                     lastDumpDir = outDir
                     "OK|" + outDir.absolutePath + "|" + files.size
                 } catch (e: Exception) {
@@ -134,7 +134,7 @@ class MainActivity : AppCompatActivity() {
         binding.txtLog.post { binding.txtLog.append(line + "\n") }
     }
 
-    private fun setProgress(value: Int) {
+    private fun updateProgress(value: Int) {
         binding.progress.post { binding.progress.progress = value }
     }
 

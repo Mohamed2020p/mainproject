@@ -10,8 +10,8 @@ import java.io.File
 class Metadata(data: ByteArray) {
 
     private val buf = Structs.little(data)
-    val version: Double
-    val header: Map<String, Any>
+    var version: Double
+    var header: Map<String, Any>
 
     val imageDefs: List<Map<String, Any>>
     val typeDefs: List<Map<String, Any>>
@@ -46,8 +46,10 @@ class Metadata(data: ByteArray) {
                 version = 24.2
             } else {
                 val images = readImages(24.0)
-                if (images.any { l(it, "token") != 1L }) version = 24.1
+                if (images.any { (it["token"] as Long) != 1L }) version = 24.1
             }
+            // HEADER layout is version-gated - re-read with the resolved version.
+            header = Structs.read(buf, 0, Structs.HEADER, version)
         }
 
         imageDefs = readImages(version)
