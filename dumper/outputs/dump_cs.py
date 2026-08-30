@@ -252,7 +252,7 @@ def write_dump_cs(executor: Executor, config: DumpConfig, path: str,
 
                             if config.dump_method_offset and full:
                                 method_pointer = il2cpp.get_method_pointer(image_name,
-                                                                           method_def)
+                                                                           method_def, i)
                                 if not is_abstract and method_pointer > 0:
                                     fixed_pointer = il2cpp.get_rva(method_pointer)
                                     try:

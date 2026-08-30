@@ -81,6 +81,7 @@ class Il2CppBinary:
         self.metadata_registration_struct: Dict[str, Any] = {}
         self.method_definition_method_specs: Dict[int, List[Dict[str, Any]]] = {}
         self.method_spec_generic_method_pointers: Dict[int, int] = {}
+        self.method_definition_pointers: Dict[int, int] = {}
         self.log: List[str] = []
 
     # ------------------------------------------------------------------
@@ -371,6 +372,8 @@ class Il2CppBinary:
             if 0 <= method_index < len(self.generic_method_pointers):
                 pointer = self.generic_method_pointers[method_index]
             self.method_spec_generic_method_pointers[spec_index] = pointer
+            if pointer:
+                self.method_definition_pointers[definition_index] = pointer
 
     # ------------------------------------------------------------------
     # queries used by the writers
@@ -383,20 +386,26 @@ class Il2CppBinary:
             return self.types[index]
         return None
 
-    def get_method_pointer(self, image_name: str, method_def: Dict[str, Any]) -> int:
+    def get_method_pointer(self, image_name: str, method_def: Dict[str, Any],
+                           method_index: int = -1) -> int:
+        pointer = 0
         if self.version >= 24.2:
             pointers = self.code_gen_module_method_pointers.get(image_name)
-            if not pointers:
-                return 0
-            index = (method_def["token"] & 0x00FFFFFF) - 1
-            if 0 <= index < len(pointers):
-                return pointers[index]
-            return 0
-        method_index = method_def.get("methodIndex", -1)
-        if method_index is not None and method_index >= 0:
-            if method_index < len(self.method_pointers):
-                return self.method_pointers[method_index]
-        return 0
+            if pointers:
+                index = (method_def["token"] & 0x00FFFFFF) - 1
+                if 0 <= index < len(pointers):
+                    pointer = pointers[index]
+        else:
+            method_def_index = method_def.get("methodIndex", -1)
+            if method_def_index is not None and method_def_index >= 0 \
+                    and method_def_index < len(self.method_pointers):
+                pointer = self.method_pointers[method_def_index]
+
+        # Generic / inflated methods are not in the per-module pointer arrays;
+        # resolve them through the generic method table instead.
+        if pointer == 0 and method_index >= 0:
+            pointer = self.method_definition_pointers.get(method_index, 0)
+        return pointer
 
     def get_field_offset_from_index(self, type_index: int, field_index_in_type: int,
                                     field_index: int, is_value_type: bool,
