@@ -4,7 +4,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg">
+    android:background="@drawable/bg_scrim">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -58,8 +58,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            app:cardBackgroundColor="@color/surface"
+            app:cardBackgroundColor="@color/surface_trans"
             app:cardCornerRadius="20dp"
+            app:cardElevation="8dp"
             app:strokeColor="@color/outline"
             app:strokeWidth="1dp">
 
@@ -156,8 +157,9 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            app:cardBackgroundColor="@color/surface"
+            app:cardBackgroundColor="@color/surface_trans"
             app:cardCornerRadius="20dp"
+            app:cardElevation="8dp"
             app:strokeColor="@color/outline"
             app:strokeWidth="1dp">
 

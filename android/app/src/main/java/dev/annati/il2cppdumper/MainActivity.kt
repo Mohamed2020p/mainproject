@@ -121,7 +121,7 @@ class MainActivity : AppCompatActivity() {
                     updateProgress(100)
                     lastDumpDir = outDir
                     "OK|" + outDir.absolutePath + "|" + files.size
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     "ERR|" + (e.message ?: e.toString())
                 }
             }
@@ -162,7 +162,7 @@ class MainActivity : AppCompatActivity() {
                     updateProgress(100)
                     lastDumpDir = outDir
                     "OK|" + outDir.absolutePath + "|" + files.size
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     "ERR|" + (e.message ?: e.toString())
                 }
             }
