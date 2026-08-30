@@ -31,7 +31,9 @@ sys.path.insert(0, REPO_ROOT)
 from flask import (Flask, Response, jsonify, render_template, request,
                    send_file, send_from_directory)
 
-from dumper.apk import ApkError, list_abis
+from dumper.apk import ApkError, list_abis, looks_like_archive
+from dumper.binary import BinaryError
+from dumper.lib_only import dump_lib_only, extract_lib
 from dumper.pipeline import DumpOptions, dump_apk, dump_bytes, dump_files
 
 APP = Flask(__name__, template_folder="templates", static_folder="static")
@@ -45,6 +47,22 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 PORT = int(os.environ.get("PORT", "8050"))
 
 
+def _purge_stale_uploads(max_age_seconds: int = 3600) -> None:
+    """Delete leftover uploads / zip caches older than an hour so repeated
+    dumps do not keep growing the working directory."""
+    now = time.time()
+    for name in os.listdir(UPLOAD_DIR):
+        path = os.path.join(UPLOAD_DIR, name)
+        try:
+            if now - os.path.getmtime(path) > max_age_seconds:
+                os.remove(path)
+        except OSError:
+            pass
+
+
+_purge_stale_uploads()
+
+
 # ---------------------------------------------------------------------------
 # pages
 # ---------------------------------------------------------------------------
@@ -55,8 +73,8 @@ def index() -> Response:
 
 @APP.route("/favicon.ico")
 def favicon() -> Response:
-    return send_from_directory(APP.static_folder, "img/icon-32.png",
-                               mimetype="image/png")
+    return send_from_directory(APP.static_folder, "img/favicon.ico",
+                               mimetype="image/x-icon")
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +137,35 @@ def _progress(job: Dict[str, Any]):
     return emit
 
 
+def _run_lib_only(archive, binary, options, payload, job):
+    """Metadata-free analysis: accepts an APK or a bare libil2cpp.so."""
+    raw = payload.get("il2cppVersion")
+    version = None
+    try:
+        if raw not in (None, "", "auto"):
+            version = float(raw)
+    except (TypeError, ValueError):
+        version = None
+    if archive:
+        data, _entry, abi, available = extract_lib(archive, options.preferred_abi)
+        job["logs"].append("ABI selected     : %s (available: %s)"
+                           % (abi, ", ".join(available)))
+    elif binary:
+        with open(binary, "rb") as handle:
+            head = handle.read(8)
+            handle.seek(0)
+            if looks_like_archive(head):       # an APK was dropped in lib mode
+                data, _entry, abi, available = extract_lib(binary,
+                                                           options.preferred_abi)
+                job["logs"].append("ABI selected     : %s (available: %s)"
+                                   % (abi, ", ".join(available)))
+            else:
+                data = handle.read()
+    else:
+        raise ValueError("Lib-only mode needs an APK or a libil2cpp.so.")
+    return dump_lib_only(data, options, version, _progress(job))
+
+
 def _run_job(job_id: str, payload: Dict[str, Any]) -> None:
     job = JOBS[job_id]
     job["status"] = "running"
@@ -128,7 +175,9 @@ def _run_job(job_id: str, payload: Dict[str, Any]) -> None:
         binary = payload.get("binaryPath")
         metadata = payload.get("metadataPath")
 
-        if archive:
+        if payload.get("libOnly"):
+            result = _run_lib_only(archive, binary, options, payload, job)
+        elif archive:
             result = dump_apk(archive, options, _progress(job))
         elif binary and metadata:
             result = dump_files(binary, metadata, options, _progress(job))
@@ -142,7 +191,7 @@ def _run_job(job_id: str, payload: Dict[str, Any]) -> None:
         job["status"] = "done" if result.ok else "error"
         job["error"] = result.error
         job["progress"] = 1.0
-    except (ApkError, ValueError) as error:
+    except (ApkError, BinaryError, ValueError) as error:
         job["status"] = "error"
         job["error"] = str(error)
     except Exception as error:                       # pragma: no cover
@@ -163,6 +212,10 @@ def status(job_id: str) -> Response:
             "status": job["status"],
             "progress": job["progress"],
             "logs": logs_tail,
+            # Absolute position of the tail so the client can diff even once the
+            # buffer wraps past 400 lines (it was dropping lines before).
+            "logStart": len(job["logs"]) - len(logs_tail),
+            "logCount": len(job["logs"]),
             "result": job["result"],
             "error": job["error"],
         }

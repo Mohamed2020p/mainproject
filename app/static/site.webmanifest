@@ -1,0 +1,16 @@
+{
+  "name": "IL2CPP Dumper Studio",
+  "short_name": "IL2CPP Studio",
+  "description": "Turn a Unity Android APK into readable C# - 100% local.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070a14",
+  "theme_color": "#070a14",
+  "developer": "Mohamed Annati",
+  "icons": [
+    { "src": "/static/img/icon-32.png",  "sizes": "32x32",   "type": "image/png" },
+    { "src": "/static/img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/img/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
