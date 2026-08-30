@@ -2,7 +2,7 @@
 <resources>
     <string name="app_name">IL2CPP Dumper Studio</string>
     <string name="subtitle">Unity Android reverse-engineering workbench</string>
-    <string name="developer">Developed by Mohamed Annati</string>
+    <string name="developer">Developed by @c0derz</string>
 
     <string name="pick_apk">Pick APK / XAPK</string>
     <string name="pick_so">libil2cpp.so</string>
@@ -16,7 +16,10 @@
     <string name="error">Error: %1$s</string>
     <string name="share">Share</string>
     <string name="open_folder">Open dump folder</string>
+    <string name="pick_lib">libil2cpp.so only (no metadata)</string>
+    <string name="lib_only">Lib-only mode (no metadata)</string>
+    <string name="hex_viewer">Hex viewer</string>
     <string name="note_on_device">On-device mode rebuilds names, types, methods, fields and properties
-        (metadata-based). For full binary analysis (RVA / field offsets / DummyDll), use the Web /
-        Colab / CLI build.</string>
+        (metadata-based). Lib-only mode analyses the native binary alone. For full binary analysis
+        (RVA / field offsets / DummyDll), use the Web / Colab / CLI build.</string>
 </resources>

@@ -116,6 +116,22 @@
                         android:text="@string/pick_dat" />
                 </LinearLayout>
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnPickLib"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="@string/pick_lib" />
+
+                <CheckBox
+                    android:id="@+id/chkLibOnly"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/lib_only"
+                    android:textColor="@color/muted" />
+
                 <TextView
                     android:id="@+id/txtSelected"
                     android:layout_width="match_parent"
@@ -195,6 +211,14 @@
                     android:layout_marginTop="14dp"
                     android:enabled="false"
                     android:text="@string/share" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnHex"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/hex_viewer" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

@@ -1,5 +1,6 @@
 package dev.annati.il2cppdumper
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -10,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import dev.annati.il2cppdumper.databinding.ActivityMainBinding
 import dev.annati.il2cppdumper.dumper.ApkExtractor
 import dev.annati.il2cppdumper.dumper.DumpWriter
+import dev.annati.il2cppdumper.dumper.LibOnly
 import dev.annati.il2cppdumper.dumper.Metadata
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private var apkPath: String? = null
     private var soPath: String? = null
     private var datPath: String? = null
+    private var libPath: String? = null
     private var lastDumpDir: File? = null
 
     private val pickApk = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -39,6 +42,9 @@ class MainActivity : AppCompatActivity() {
     private val pickDat = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) { datPath = cache(uri, "global-metadata.dat"); refreshSelected() }
     }
+    private val pickLib = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) { libPath = cache(uri, "libil2cpp.so"); refreshSelected() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,8 +54,10 @@ class MainActivity : AppCompatActivity() {
         binding.btnPickApk.setOnClickListener { pickApk.launch(arrayOf("*/*")) }
         binding.btnPickSo.setOnClickListener { pickSo.launch(arrayOf("*/*")) }
         binding.btnPickDat.setOnClickListener { pickDat.launch(arrayOf("*/*")) }
+        binding.btnPickLib.setOnClickListener { pickLib.launch(arrayOf("*/*")) }
         binding.btnDump.setOnClickListener { runDump() }
         binding.btnShare.setOnClickListener { shareDump() }
+        binding.btnHex.setOnClickListener { openHex() }
 
         binding.progress.progress = 0
     }
@@ -67,10 +75,12 @@ class MainActivity : AppCompatActivity() {
         apkPath?.let { parts.add("APK: " + File(it).name) }
         soPath?.let { parts.add(".so: " + File(it).name) }
         datPath?.let { parts.add(".dat: " + File(it).name) }
+        libPath?.let { parts.add("lib-only: " + File(it).name) }
         binding.txtSelected.text = parts.joinToString("\n")
     }
 
     private fun runDump() {
+        if (binding.chkLibOnly.isChecked) { runLibOnly(); return }
         val hasApk = apkPath != null
         val hasPair = soPath != null && datPath != null
         if (!hasApk && !hasPair) {
@@ -128,6 +138,57 @@ class MainActivity : AppCompatActivity() {
                 appendLog("ERROR: " + result.substringAfter("|"))
             }
         }
+    }
+
+    private fun runLibOnly() {
+        binding.btnDump.isEnabled = false
+        binding.txtStatus.setText(R.string.dumping)
+        binding.btnDump.setText(R.string.dumping)
+        updateProgress(5)
+        appendLog("Starting lib-only dump…")
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val outDir = File(getExternalFilesDir(null), "dump")
+                    var so: String? = libPath ?: soPath
+                    if (so == null && apkPath != null) {
+                        appendLog("Extracting libil2cpp.so from APK…")
+                        so = ApkExtractor.extract(apkPath!!, cacheDir).binary?.absolutePath
+                    }
+                    if (so == null) return@withContext "ERR|Pick a .so or an APK for lib-only mode."
+                    appendLog("Analysing native binary (no metadata)…")
+                    updateProgress(40)
+                    val files = LibOnly.dump(so, outDir)
+                    updateProgress(100)
+                    lastDumpDir = outDir
+                    "OK|" + outDir.absolutePath + "|" + files.size
+                } catch (e: Exception) {
+                    "ERR|" + (e.message ?: e.toString())
+                }
+            }
+            binding.btnDump.isEnabled = true
+            binding.btnDump.setText(R.string.dump)
+            if (result.startsWith("OK")) {
+                val parts = result.split("|")
+                binding.btnShare.isEnabled = true
+                binding.txtStatus.text = getString(R.string.done, parts[1])
+                appendLog("Done. ${parts[2]} files written to ${parts[1]}")
+            } else {
+                binding.txtStatus.text = getString(R.string.error, result.substringAfter("|"))
+                appendLog("ERROR: " + result.substringAfter("|"))
+            }
+        }
+    }
+
+    private fun openHex() {
+        val dumpCs = File(lastDumpDir ?: getExternalFilesDir(null), "dump.cs")
+        val target = (if (dumpCs.exists()) dumpCs.absolutePath else null)
+            ?: libPath ?: soPath ?: datPath ?: apkPath
+        if (target == null) {
+            Toast.makeText(this, R.string.no_files, Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivity(Intent(this, HexViewerActivity::class.java).putExtra("path", target))
     }
 
     private fun appendLog(line: String) {

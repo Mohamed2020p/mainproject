@@ -15,7 +15,7 @@ import java.nio.ByteOrder
  */
 object Structs {
 
-    const val METADATA_SANITY = -0x04EE4451 // 0xFAB11BAF as signed int
+    const val METADATA_SANITY = -89056337 // 0xFAB11BAF as a signed 32-bit int
 
     private const val U32 = 1
     private const val I32 = 2
